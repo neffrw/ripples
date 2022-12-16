@@ -683,11 +683,11 @@ class Graph {
   using reverse_map_vector_t = std::vector<VertexTy, reverse_map_allocator_t>;
   #endif
 
-// using idmap_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<std::pair<const VertexTy, VertexTy>>;
+ using idmap_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<std::pair<const VertexTy, VertexTy>>;
  #if defined ENABLE_METALL
- using idmap_t = metall::container::unordered_map<VertexTy, VertexTy>;
+ using idmap_t = metall::container::unordered_map<VertexTy, VertexTy, std::hash<VertexTy>, std::equal_to<VertexTy>, idmap_allocator_t>;
  #else
- using idmap_t = std::unordered_map<VertexTy, VertexTy>;
+ using idmap_t = std::unordered_map<VertexTy, VertexTy, std::hash<VertexTy>, std::equal_to<VertexTy>, idmap_allocator_t>;
  #endif
 
   idmap_t idMap;
