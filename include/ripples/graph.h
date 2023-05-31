@@ -60,6 +60,17 @@
 
 namespace ripples {
 
+// \brief Obtains a raw pointer from a given pointer.
+// This function is equivalent to std::pointer_to, which is available in C++20.
+template <typename T>
+typename std::pointer_traits<T>::element_type* pointer_to(T p) {
+#ifdef ENABLE_METALL
+  return metall::to_raw_pointer(p);
+#else
+  return p;
+#endif
+}
+
 //! \brief Forward Direction Graph loading policy.
 //!
 //! \tparam VertexTy The type of the vertex in the graph.
@@ -213,6 +224,17 @@ class Graph {
   //! The integer type representing vertices in the graph.
   using vertex_type = VertexTy;
 
+ private:
+  // Allocator and pointer types for the edges array
+  using edge_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<edge_type>;
+  using edge_pointer_t = typename std::allocator_traits<edge_allocator_t>::pointer;
+
+  // Allocator and pointer types for the indices array
+  using index_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<edge_pointer_t>;
+  using index_pointer_t = typename std::allocator_traits<index_allocator_t>::pointer;
+
+ public:
+
   //! \brief The neighborhood of a vertex.
   class Neighborhood {
    public:
@@ -220,18 +242,18 @@ class Graph {
     //!
     //! \param B The begin of the neighbor list.
     //! \param E The end of the neighbor list.
-    Neighborhood(edge_type *B, edge_type *E) : begin_(B), end_(E) {}
+    Neighborhood(edge_pointer_t B, edge_pointer_t E) : begin_(B), end_(E) {}
 
     //! Begin of the neighborhood.
     //! \return an iterator to the begin of the neighborhood.
-    edge_type *begin() const { return begin_; }
+    edge_pointer_t begin() const { return begin_; }
     //! End of the neighborhood.
     //! \return an iterator to the begin of the neighborhood.
-    edge_type *end() const { return end_; }
+    edge_pointer_t end() const { return end_; }
 
    private:
-    edge_type *begin_;
-    edge_type *end_;
+    edge_pointer_t begin_;
+    edge_pointer_t end_;
   };
 
  //! Allocator Graph Constructor.
@@ -261,8 +283,7 @@ class Graph {
 
 #pragma omp parallel for
     for (size_t i = 0; i < numNodes + 1; ++i) {
-      index[i] = std::addressof(edges[0]) + (O.index[i] -
-                          O.index[0]);
+      index[i] = O.index[i];
     }
   }
 
@@ -283,8 +304,7 @@ class Graph {
 
 #pragma omp parallel for
     for (size_t i = 0; i < numNodes + 1; ++i) {
-      index[i] = std::addressof(edges[0]) + (O.index[i] -
-                          O.index[0]);
+      index[i] = O.index[i];
     }
   }
 
@@ -400,7 +420,7 @@ class Graph {
 
 #pragma omp parallel for
     for (size_t i = 0; i < num_nodes + 1; ++i) {
-      index[i] = std::addressof(edges[0]);
+      index[i] = edges;
     }
 
 #pragma omp parallel for
@@ -416,10 +436,10 @@ class Graph {
     }
 
     for (size_t i = 1; i <= num_nodes; ++i) {
-      index[i] += index[i - 1] - std::addressof(edges[0]);
+      index[i] += index[i - 1] - edges;
     }
 
-    std::vector<edge_type *> ptrEdge(std::addressof(index[0]), std::addressof(index[0]) + num_nodes);
+    std::vector<edge_pointer_t > ptrEdge(index, index + num_nodes);
     for (auto itr = begin; itr != end; ++itr) {
       *ptrEdge[DirectionPolicy::Source(itr, idMap)] =
           edge_type::template Create<DirectionPolicy>(itr, idMap);
@@ -439,16 +459,6 @@ class Graph {
     }
     // if (index) delete[] index;
     // if (edges) delete[] edges;
-  }
-
-  void recalculate_addresses() const {
-    if(index){
-        #pragma omp parallel for
-        for (size_t i = 0; i < numNodes + 1; ++i) {
-            index[i] = std::addressof(edges[0]) + (index[i] -
-                                index[0]);
-        }
-    }
   }
 
   //! Returns the out-degree of a vertex.
@@ -535,10 +545,10 @@ class Graph {
     sequence_of<VertexTy>::dump(FS, reverseMap.begin(), reverseMap.end());
 
     using relative_index =
-        typename std::iterator_traits<edge_type *>::difference_type;
+        typename std::iterator_traits<edge_pointer_t>::difference_type;
     std::vector<relative_index> relIndex(numNodes + 1, 0);
     std::transform(index, index + numNodes + 1, relIndex.begin(),
-                   [=](edge_type *v) -> relative_index {
+                   [=](edge_pointer_t v) -> relative_index {
                      return std::distance(edges, v);
                    });
     sequence_of<relative_index>::dump(FS, relIndex.begin(), relIndex.end());
@@ -560,12 +570,13 @@ class Graph {
   //! \return the transposed graph.
   transposed_type get_transpose(allocator_t allocator = allocator_t()) const {
     using out_dest_type = typename transposed_type::edge_type;
+    using out_dest_ptr_type = typename std::pointer_traits<typename std::allocator_traits<allocator_t>::pointer>::template rebind<out_dest_type>;
     transposed_type G(allocator);
     G.numEdges = numEdges;
     G.numNodes = numNodes;
     G.reverseMap = reverseMap;
     G.idMap = idMap;
-    using index_transposed_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<out_dest_type *>;
+    using index_transposed_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<out_dest_ptr_type>;
     auto index_allocator = index_transposed_allocator_t(G.graph_allocator);
     G.index = index_allocator.allocate(numNodes + 1);
     using edge_transposed_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<out_dest_type>;
@@ -573,27 +584,29 @@ class Graph {
     G.edges = edge_allocator.allocate(numEdges);
 
 #pragma omp parallel for
-    for (auto itr = std::addressof(G.index[0]); itr < std::addressof(G.index[0]) + numNodes + 1; ++itr) {
+    for (auto itr = G.index; itr < G.index + numNodes + 1; ++itr) {
       *itr = nullptr;
     }
 
 #pragma omp parallel for
-    for (auto itr = std::addressof(G.edges[0]); itr < std::addressof(G.edges[0]) + numEdges; ++itr) {
+    for (auto itr = G.edges; itr < G.edges + numEdges; ++itr) {
       *itr = out_dest_type();
     }
 
-    std::for_each(std::addressof(edges[0]), std::addressof(edges[0]) + numEdges,
+    std::for_each(edges, edges + numEdges,
                   [&](const edge_type &d) { ++G.index[d.vertex + 1]; });
 
-    G.index[0] = std::addressof(G.edges[0]);
-    std::partial_sum(std::addressof(G.index[0]), std::addressof(G.index[0]) + numNodes + 1, std::addressof(G.index[0]),
-                     [](out_dest_type *a, out_dest_type *b) -> out_dest_type * {
-                       size_t sum = reinterpret_cast<size_t>(a) +
-                                    reinterpret_cast<size_t>(b);
-                       return reinterpret_cast<out_dest_type *>(sum);
+    G.index[0] = G.edges;
+    std::partial_sum(G.index, G.index + numNodes + 1, G.index,
+                     [](out_dest_ptr_type a, out_dest_ptr_type b) -> out_dest_ptr_type {
+                       size_t sum = reinterpret_cast<size_t>(pointer_to(a)) +
+                                    reinterpret_cast<size_t>(pointer_to(b));
+                       // Convert to raw pointer first explicitly
+                       // since offset_ptr will not work with reinterpret_cast.
+                       return out_dest_ptr_type(reinterpret_cast<out_dest_type *>(sum));
                      });
 
-    std::vector<out_dest_type *> destPointers(std::addressof(G.index[0]), std::addressof(G.index[0]) + numNodes);
+    std::vector<out_dest_ptr_type> destPointers(G.index, G.index + numNodes);
 
     for (vertex_type v = 0; v < numNodes; ++v) {
       for (auto u : neighbors(v)) {
@@ -605,12 +618,12 @@ class Graph {
     return G;
   }
 
-  edge_type **csr_index() const {
-    return std::addressof(index[0]);
+  edge_pointer_t *csr_index() const {
+    return index;
     }
 
-  edge_type *csr_edges() const {
-    return std::addressof(edges[0]);
+  edge_pointer_t csr_edges() const {
+    return edges;
     }
 
   template <typename FStream>
@@ -647,32 +660,24 @@ class Graph {
       edges[i] = edge_type();
     }
 
-    FS.read(reinterpret_cast<char *>(std::addressof(index[0])),
+    FS.read(reinterpret_cast<char *>(pointer_to(index)),
             (numNodes + 1) * sizeof(ptrdiff_t));
 
-    sequence_of<edge_type *>::load(index, index + numNodes + 1, index);
+    sequence_of<edge_pointer_t>::load(index, index + numNodes + 1, index);
 
     std::transform(index, index + numNodes + 1, index,
-                   [=](edge_type *v) -> edge_type * {
-                     return reinterpret_cast<ptrdiff_t>(v) + std::addressof(edges[0]);
+                   [=](edge_pointer_t v) -> edge_pointer_t {
+                     return edge_pointer_t(reinterpret_cast<ptrdiff_t>(pointer_to(v)) + edges);
                    });
 
-    FS.read(reinterpret_cast<char *>(std::addressof(edges[0])), numEdges * sizeof(edge_type));
+    FS.read(reinterpret_cast<char *>(pointer_to(edges)), numEdges * sizeof(edge_type));
     sequence_of<edge_type>::load(edges, edges + numEdges, edges);
   }
 
   private:
-    // Allocator and pointer types for the indices array
-  using index_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<edge_type *>;
-  using index_pointer_t = typename std::allocator_traits<index_allocator_t>::pointer;
+
   index_pointer_t index;
-
-
-  // Allocator and pointer types for the edges array
-  using edge_allocator_t = typename std::allocator_traits<allocator_t>::template rebind_alloc<edge_type>;
-  using edge_pointer_t = typename std::allocator_traits<edge_allocator_t>::pointer;
   edge_pointer_t edges;
-
   allocator_t graph_allocator;
 
     // Allocator and vector types for the indices array
