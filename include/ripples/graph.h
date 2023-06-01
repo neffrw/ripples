@@ -585,7 +585,7 @@ class Graph {
 
 #pragma omp parallel for
     for (auto itr = G.index; itr < G.index + numNodes + 1; ++itr) {
-      *itr = nullptr;
+      *itr = G.edges;
     }
 
 #pragma omp parallel for
@@ -596,18 +596,13 @@ class Graph {
     std::for_each(edges, edges + numEdges,
                   [&](const edge_type &d) { ++G.index[d.vertex + 1]; });
 
-    G.index[0] = G.edges;
     std::partial_sum(G.index, G.index + numNodes + 1, G.index,
-                     [](out_dest_ptr_type a, out_dest_ptr_type b) -> out_dest_ptr_type {
-                       size_t sum = reinterpret_cast<size_t>(pointer_to(a)) +
-                                    reinterpret_cast<size_t>(pointer_to(b));
-                       // Convert to raw pointer first explicitly
-                       // since offset_ptr will not work with reinterpret_cast.
-                       return out_dest_ptr_type(reinterpret_cast<out_dest_type *>(sum));
+                     [&G](out_dest_ptr_type a, out_dest_ptr_type b) {
+                      const auto degree = std::distance(G.edges, b);
+                      return a + degree;
                      });
 
     std::vector<out_dest_ptr_type> destPointers(G.index, G.index + numNodes);
-
     for (vertex_type v = 0; v < numNodes; ++v) {
       for (auto u : neighbors(v)) {
         *destPointers[u.vertex] = {v, u.weight};
