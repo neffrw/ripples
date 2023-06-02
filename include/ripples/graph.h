@@ -55,21 +55,10 @@
 #if defined ENABLE_METALL
 #include <metall/container/vector.hpp>
 #include <metall/container/unordered_map.hpp>
-#include "metall/metall.hpp"
+#include <metall/metall.hpp>
 #endif
 
 namespace ripples {
-
-// \brief Obtains a raw pointer from a given pointer.
-// This function is equivalent to std::pointer_to, which is available in C++20.
-template <typename T>
-typename std::pointer_traits<T>::element_type* pointer_to(T p) {
-#ifdef ENABLE_METALL
-  return metall::to_raw_pointer(p);
-#else
-  return p;
-#endif
-}
 
 //! \brief Forward Direction Graph loading policy.
 //!
@@ -283,7 +272,7 @@ class Graph {
 
 #pragma omp parallel for
     for (size_t i = 0; i < numNodes + 1; ++i) {
-      index[i] = O.index[i];
+      index[i] = edges + std::distance(O.index[0], O.index[i]);
     }
   }
 
@@ -304,7 +293,7 @@ class Graph {
 
 #pragma omp parallel for
     for (size_t i = 0; i < numNodes + 1; ++i) {
-      index[i] = O.index[i];
+      index[i] = edges + std::distance(O.index[0], O.index[i]);
     }
   }
 
@@ -315,7 +304,7 @@ class Graph {
         numEdges(O.numEdges),
         index(O.index),
         edges(O.edges),
-        graph_allocator(O.graph_allocator),
+        graph_allocator(std::move(O.graph_allocator)),
         idMap(std::move(O.idMap)),
         reverseMap(std::move(O.reverseMap)) {
     O.numNodes = 0;
@@ -439,7 +428,7 @@ class Graph {
       index[i] += index[i - 1] - edges;
     }
 
-    std::vector<edge_pointer_t > ptrEdge(index, index + num_nodes);
+    std::vector<edge_pointer_t> ptrEdge(index, index + num_nodes);
     for (auto itr = begin; itr != end; ++itr) {
       *ptrEdge[DirectionPolicy::Source(itr, idMap)] =
           edge_type::template Create<DirectionPolicy>(itr, idMap);
@@ -583,6 +572,10 @@ class Graph {
     auto edge_allocator = edge_transposed_allocator_t(G.graph_allocator);
     G.edges = edge_allocator.allocate(numEdges);
 
+    // Initialize with non-null pointers because the increment (++) operation is
+    // performed to the values in G.index.
+    // Incrementing the null pointer does not work with Boost::offset_ptr and
+    // may be an undefined behavior even with the raw pointer.
 #pragma omp parallel for
     for (auto itr = G.index; itr < G.index + numNodes + 1; ++itr) {
       *itr = G.edges;
@@ -670,6 +663,17 @@ class Graph {
   }
 
   private:
+
+  // \brief Obtains a raw pointer from a given pointer.
+  // This function is equivalent to std::pointer_to, which is available in C++20.
+  template <typename T>
+  typename std::pointer_traits<T>::element_type* pointer_to(T p) {
+  #ifdef ENABLE_METALL
+    return metall::to_raw_pointer(p);
+  #else
+    return p;
+  #endif
+  }
 
   index_pointer_t index;
   edge_pointer_t edges;
