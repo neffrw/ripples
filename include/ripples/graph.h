@@ -585,13 +585,9 @@ class Graph {
     return G;
   }
 
-  edge_pointer_t *csr_index() const {
-    return index;
-    }
+  edge_pointer_t *csr_index() const { return index; }
 
-  edge_pointer_t csr_edges() const {
-    return edges;
-    }
+  edge_pointer_t csr_edges() const { return edges; }
 
   template <typename FStream>
   void load_binary(FStream &FS) {
