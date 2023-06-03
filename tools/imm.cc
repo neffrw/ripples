@@ -155,9 +155,11 @@ int main(int argc, char **argv) {
   using dest_type = ripples::WeightedDestination<uint32_t, float>;
   #if defined ENABLE_METALL
   using GraphFwd =
-      ripples::Graph<uint32_t, dest_type, ripples::ForwardDirection<uint32_t>, metall::manager::allocator_type<char>>;
+      ripples::Graph<uint32_t, dest_type, ripples::ForwardDirection<uint32_t>,
+                      metall::manager::allocator_type<char>>;
   using GraphBwd =
-      ripples::Graph<uint32_t, dest_type, ripples::BackwardDirection<uint32_t>, metall::manager::allocator_type<char>>;
+      ripples::Graph<uint32_t, dest_type, ripples::BackwardDirection<uint32_t>,
+                      metall::manager::allocator_type<char>>;
   #else
   using GraphFwd =
       ripples::Graph<uint32_t, dest_type, ripples::ForwardDirection<uint32_t>>;
@@ -175,16 +177,13 @@ metall::manager manager = (exists ?
   if(exists){
     console->info("Previously existing graph exists! Loading...");
     Gr = manager.find<GraphBwd>("graph").first;
-    // Gr->recalculate_addresses();
   }
   else{
     console->info("Creating new metall directory...");
     GraphFwd Gf = ripples::loadGraph<GraphFwd>(CFG, weightGen, manager.get_allocator());
-    Gr = manager.construct<GraphBwd>("graph")(Gf.get_transpose(manager.get_allocator()));
+    Gr = manager.construct<GraphBwd>("graph")(Gf.get_transpose());
   }
-
   GraphBwd &G(*Gr);
-  //GraphBwd G(Gr[0]);
 #else
   GraphFwd Gf = ripples::loadGraph<GraphFwd>(CFG, weightGen);
   GraphBwd G = Gf.get_transpose();

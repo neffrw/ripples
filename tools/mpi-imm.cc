@@ -155,12 +155,11 @@ metall::manager manager = (exists ?
   if(exists){
     console->info("Previously existing graph exists! Loading...");
     Gr = manager.find<GraphBwd>("graph").first;
-    // Gr->recalculate_addresses();
   }
   else{
     console->info("Creating new metall directory...");
     GraphFwd Gf = ripples::loadGraph<GraphFwd>(CFG, weightGen, manager.get_allocator());
-    Gr = manager.construct<GraphBwd>("graph")(Gf.get_transpose(manager.get_allocator()));
+    Gr = manager.construct<GraphBwd>("graph")(Gf.get_transpose());
   }
   GraphBwd G(Gr[0]);
 #else
