@@ -593,7 +593,7 @@ class Graph {
   void load_binary(FStream &FS) {
     #ifdef ENABLE_METALL
     // Static assert 0
-    std::static_assert(0, "Not implemented yet, don't use with Metall");
+    throw 0 && "Not implemented yet, don't use with Metall";
     #endif
 
 

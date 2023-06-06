@@ -76,7 +76,7 @@ struct GraphInputConfiguration {
         ->required();
     app.add_flag("--metall-store-dir", metall_dir,
                     "Directory to store metall graph data.")
-        ->group("Input Options")
+        ->group("Input Options");
     app.add_flag("--rr-store-dir", rr_dir, "Directory to store RR data.")
         ->group("Input Options");
     app.add_flag("--reload-binary", reload, "Reload a graph from binary input")
